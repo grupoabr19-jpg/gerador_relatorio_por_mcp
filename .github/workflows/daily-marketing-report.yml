@@ -32,23 +32,28 @@ jobs:
       - name: Validate Google authentication secrets
         shell: bash
         env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
         run: |
+          if [[ -n "$GCP_CREDENTIALS_JSON" ]]; then
+            exit 0
+          fi
           if [[ -z "$GCP_WORKLOAD_IDENTITY_PROVIDER" ]]; then
-            echo "::error::Missing or empty Actions secret: GCP_WORKLOAD_IDENTITY_PROVIDER"
+            echo "::error::Configure GCP_CREDENTIALS_JSON, or both GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT."
             exit 1
           fi
           if [[ -z "$GCP_SERVICE_ACCOUNT" ]]; then
-            echo "::error::Missing or empty Actions secret: GCP_SERVICE_ACCOUNT"
+            echo "::error::Configure GCP_CREDENTIALS_JSON, or both GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT."
             exit 1
           fi
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.GCP_CREDENTIALS_JSON == '' && secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || '' }}
+          service_account: ${{ secrets.GCP_CREDENTIALS_JSON == '' && secrets.GCP_SERVICE_ACCOUNT || '' }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: true

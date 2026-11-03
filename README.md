@@ -100,8 +100,9 @@ Dashboard. Counts and rates are stored as numbers. Configure repository
 | `GA4_PROPERTY_ID` | Variable | Optional override for the GA4 property ID `415894822`; leave blank to use that default. |
 | `META_AD_ACCOUNT_ID` | Variable | Meta ad account ID, with or without `act_`; leave blank to skip Ads. |
 | `ENABLE_DAILY_SCHEDULE` | Variable | Set to `true` to enable scheduled runs. Manual runs remain available. |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Secret | Google Cloud Workload Identity Provider resource name. |
-| `GCP_SERVICE_ACCOUNT` | Secret | Service account email used through Workload Identity Federation. |
+| `GCP_CREDENTIALS_JSON` | Secret | Optional alternative: entire Google service account JSON key file contents. |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Secret | Preferred: Google Cloud Workload Identity Provider resource name. |
+| `GCP_SERVICE_ACCOUNT` | Secret | Preferred: service account email used through Workload Identity Federation. |
 | `META_ACCESS_TOKEN` | Secret | Meta access token with `ads_read`; required when Meta Ads is enabled. |
 
 Set up Google Cloud Workload Identity Federation for this GitHub repository
@@ -110,6 +111,14 @@ Restrict the provider condition to this repository and grant the service
 account read access to the GA4 property and edit access to the spreadsheet
 (share the sheet with the service account email). Enable the Analytics Data
 API and Google Sheets API in the Cloud project.
+
+As a simpler but less secure alternative to Workload Identity Federation,
+create a JSON key for the Google service account in **Google Cloud Console →
+IAM & Admin → Service Accounts → [account] → Keys → Add key → Create new key
+→ JSON**. Store the complete downloaded file contents in the GitHub
+`GCP_CREDENTIALS_JSON` repository secret. Never commit or share the key; revoke
+it in Google Cloud if it is exposed. When this secret is configured, the
+workflow uses it instead of the two Workload Identity Federation secrets.
 
 The Meta report is ad-level with daily `publisher_platform` and
 `platform_position` breakdowns. The Meta token must have access to the account;
