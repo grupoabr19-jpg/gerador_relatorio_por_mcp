@@ -96,7 +96,7 @@ Dashboard. Counts and rates are stored as numbers. Configure repository
 
 | Name | Type | Purpose |
 | --- | --- | --- |
-| `SPREADSHEET_ID` | Variable | Optional override for the shared spreadsheet ID already configured in the workflow. |
+| `SPREADSHEET_ID` | Variable | Optional override; accepts either the spreadsheet ID or its full Google Sheets URL. |
 | `GA4_PROPERTY_ID` | Variable | Optional override for the GA4 property ID `415894822`; leave blank to use that default. |
 | `META_AD_ACCOUNT_ID` | Variable | Meta ad account ID, with or without `act_`; leave blank to skip Ads. |
 | `ENABLE_DAILY_SCHEDULE` | Variable | Set to `true` to enable scheduled runs. Manual runs remain available. |

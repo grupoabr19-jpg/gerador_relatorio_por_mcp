@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import date, datetime, timedelta
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 import google.auth
@@ -160,6 +161,28 @@ def _meta_ads_rows(records: list[dict[str, Any]]) -> list[list[Any]]:
 
 def _sheets_range(sheet_name: str, end_column: str = "ZZ") -> str:
     return f"'{sheet_name}'!A:{end_column}"
+
+
+def _normalize_spreadsheet_id(value: str) -> str:
+    value = value.strip()
+    if "://" in value:
+        parsed_url = urlparse(value)
+        path_parts = parsed_url.path.strip("/").split("/")
+        if (
+            parsed_url.hostname != "docs.google.com"
+            or len(path_parts) < 3
+            or path_parts[:2] != ["spreadsheets", "d"]
+        ):
+            raise ValueError(
+                "SPREADSHEET_ID must be a Google Sheets ID or spreadsheet URL."
+            )
+        value = path_parts[2]
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        raise ValueError(
+            "SPREADSHEET_ID must be a Google Sheets ID or spreadsheet URL."
+        )
+    return value
 
 
 def _column_name(column_number: int) -> str:
@@ -400,13 +423,14 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    spreadsheet_id = os.environ.get("SPREADSHEET_ID")
+    spreadsheet_value = os.environ.get("SPREADSHEET_ID")
     property_id = os.environ.get("GA4_PROPERTY_ID")
     meta_account_id = os.environ.get("META_AD_ACCOUNT_ID")
     meta_access_token = os.environ.get("META_ACCESS_TOKEN")
 
-    if not spreadsheet_id:
+    if not spreadsheet_value:
         raise RuntimeError("SPREADSHEET_ID variable is required.")
+    spreadsheet_id = _normalize_spreadsheet_id(spreadsheet_value)
     if not property_id and not meta_account_id:
         raise RuntimeError(
             "Configure GA4_PROPERTY_ID, META_AD_ACCOUNT_ID, or both."

@@ -8,11 +8,29 @@ from scripts.daily_marketing_report import (
     META_ADS_HEADERS,
     _ga4_rows,
     _meta_ads_rows,
+    _normalize_spreadsheet_id,
     _upsert_rows,
 )
 
 
 class TestReportRowConversion(unittest.TestCase):
+    def test_normalizes_spreadsheet_id_or_full_url(self):
+        spreadsheet_id = "1goIR1S7rAzNLwTnCAeVbHp-Ko0l7M44p6B0RfUaM16w"
+        self.assertEqual(
+            _normalize_spreadsheet_id(spreadsheet_id), spreadsheet_id
+        )
+        self.assertEqual(
+            _normalize_spreadsheet_id(
+                "https://docs.google.com/spreadsheets/d/"
+                f"{spreadsheet_id}/edit?gid=362856036#gid=362856036"
+            ),
+            spreadsheet_id,
+        )
+
+    def test_rejects_non_spreadsheet_url(self):
+        with self.assertRaisesRegex(ValueError, "Google Sheets ID"):
+            _normalize_spreadsheet_id("https://example.com/not-a-sheet")
+
     def test_converts_ga4_rows_to_sheet_schema(self):
         response = Mock()
         response.rows = [
