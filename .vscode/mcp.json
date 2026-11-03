@@ -1,0 +1,34 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "google-cloud-project",
+      "description": "Google Cloud project ID for Analytics MCP",
+      "password": false
+    }
+  ],
+  "servers": {
+    "analytics-mcp": {
+      "type": "stdio",
+      "command": "pipx",
+      "args": [
+        "run",
+        "--spec",
+        "${workspaceFolder}",
+        "analytics-mcp"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "GOOGLE_CLOUD_PROJECT": "${input:google-cloud-project}"
+      }
+    },
+    "meta-ads": {
+      "type": "http",
+      "url": "https://mcp.facebook.com/ads"
+    },
+    "taplio": {
+      "type": "http",
+      "url": "https://mcp.taplio.com/"
+    }
+  }
+}
