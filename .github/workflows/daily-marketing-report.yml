@@ -44,7 +44,7 @@ jobs:
       - name: Collect GA4 and Meta Ads data
         env:
           SPREADSHEET_ID: ${{ vars.SPREADSHEET_ID || '1goIR1S7rAzNLwTnCAeVbHp-Ko0l7M44p6B0RfUaM16w' }}
-          GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID }}
+          GA4_PROPERTY_ID: ${{ vars.GA4_PROPERTY_ID || '415894822' }}
           META_AD_ACCOUNT_ID: ${{ vars.META_AD_ACCOUNT_ID }}
           META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
           META_GRAPH_API_VERSION: v26.0
