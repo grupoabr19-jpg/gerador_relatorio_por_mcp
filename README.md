@@ -82,26 +82,46 @@ changes, publishing, comments, outreach, and scraping are out of scope.
 
 ### Scheduled exports with GitHub Actions
 
-The MCP configuration above is for interactive use in VS Code; GitHub Actions
-runs on a separate, unattended machine and cannot reuse a local sign-in session.
-Before adding a scheduled workflow, configure machine authentication and choose
-the exact report:
+The repository includes
+[`.github/workflows/daily-marketing-report.yml`](.github/workflows/daily-marketing-report.yml)
+and a collector that runs daily at 06:00 São Paulo time (09:00 UTC). It
+re-queries the previous seven complete days to account for reporting delays
+and upserts by date and dimensions. Run it manually with **Actions → Daily
+marketing data → Run workflow** to verify setup before enabling the schedule.
 
-- **Google Analytics:** property ID, date range, dimensions, and metrics.
-  Prefer GitHub Actions OIDC with Google Cloud Workload Identity Federation;
-  otherwise use a service account credential stored as a GitHub secret.
-- **Meta Ads:** ad account ID, report fields and breakdowns, and an access
-  token with `ads_read`, stored as a GitHub secret. Confirm the token's expiry
-  and renewal process.
-- **Taplio:** the remote MCP documents browser-based OAuth. Confirm a supported
-  unattended authentication method before including it in a scheduled job;
-  do not copy a browser session cookie into GitHub.
-- **Output:** choose temporary GitHub Actions artifacts or a durable storage
-  destination such as Google Cloud Storage.
+The collector creates and writes only to `Coleta_GA4_Diario` and
+`Coleta_MetaAds_Diario`; it does not modify existing source tabs or the
+Dashboard. Counts and rates are stored as numbers. Configure repository
+**Variables** and **Secrets**:
 
-Never put tokens or credential files in the repository. Once the reports,
-schedule, authentication, and output destination are configured, a workflow can
-run the exports on a cron and upload the resulting files.
+| Name | Type | Purpose |
+| --- | --- | --- |
+| `SPREADSHEET_ID` | Variable | Optional override for the shared spreadsheet ID already configured in the workflow. |
+| `GA4_PROPERTY_ID` | Variable | GA4 numeric property ID; leave blank to skip GA4. |
+| `META_AD_ACCOUNT_ID` | Variable | Meta ad account ID, with or without `act_`; leave blank to skip Ads. |
+| `ENABLE_DAILY_SCHEDULE` | Variable | Set to `true` to enable scheduled runs. Manual runs remain available. |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Secret | Google Cloud Workload Identity Provider resource name. |
+| `GCP_SERVICE_ACCOUNT` | Secret | Service account email used through Workload Identity Federation. |
+| `META_ACCESS_TOKEN` | Secret | Meta access token with `ads_read`; required when Meta Ads is enabled. |
+
+Set up Google Cloud Workload Identity Federation for this GitHub repository
+using the [official GitHub Actions guide](https://github.com/google-github-actions/auth#preferred-workload-identity-federation).
+Restrict the provider condition to this repository and grant the service
+account read access to the GA4 property and edit access to the spreadsheet
+(share the sheet with the service account email). Enable the Analytics Data
+API and Google Sheets API in the Cloud project.
+
+The Meta report is ad-level with daily `publisher_platform` and
+`platform_position` breakdowns. The Meta token must have access to the account;
+plan for its expiration and renewal. Never put tokens or credential files in
+the repository.
+
+This first scheduled version does **not** collect organic Facebook/Instagram
+Page Insights or LinkedIn/Taplio metrics, and it does not update the existing
+Dashboard. Instagram organic insights require a separate account ID and
+permissions; Taplio's documented browser OAuth is not suitable for unattended
+GitHub Actions. Those sources should be added only after their unattended
+authentication and metric mapping are configured.
 
 ## Setup instructions 🔧
 
