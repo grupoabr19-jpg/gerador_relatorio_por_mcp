@@ -86,8 +86,8 @@ The repository includes
 [`.github/workflows/daily-marketing-report.yml`](.github/workflows/daily-marketing-report.yml)
 and a collector that runs daily at 06:00 São Paulo time (09:00 UTC). It
 re-queries the previous seven complete days to account for reporting delays
-and upserts by date and dimensions. Run it manually with **Actions → Daily
-marketing data → Run workflow** to verify setup before enabling the schedule.
+and upserts by date and dimensions. It can also be run manually with
+**Actions → Daily marketing data → Run workflow**.
 
 The collector updates the daily aggregate in `Dados_GA4`, filling dates after
 the latest existing date and re-querying the latest seven days to account for
@@ -102,7 +102,6 @@ is not modified. Configure repository
 | `SPREADSHEET_ID` | Variable | Optional override; accepts either the spreadsheet ID or its full Google Sheets URL. |
 | `GA4_PROPERTY_ID` | Variable | Optional override for the GA4 property ID `415894822`; leave blank to use that default. |
 | `META_AD_ACCOUNT_ID` | Variable | Meta ad account ID, with or without `act_`; leave blank to skip Ads. |
-| `ENABLE_DAILY_SCHEDULE` | Variable | Set to `true` to enable scheduled runs. Manual runs remain available. |
 | `GCP_CREDENTIALS_JSON` | Secret | Optional alternative: entire Google service account JSON key file contents. |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | Secret | Preferred: Google Cloud Workload Identity Provider resource name. |
 | `GCP_SERVICE_ACCOUNT` | Secret | Preferred: service account email used through Workload Identity Federation. |
@@ -125,8 +124,9 @@ workflow uses it instead of the two Workload Identity Federation secrets.
 
 The Meta report is ad-level with daily `publisher_platform` and
 `platform_position` breakdowns. The Meta token must have access to the account;
-plan for its expiration and renewal. Never put tokens or credential files in
-the repository.
+plan for its expiration and renewal. If the Meta account ID is configured
+without a token, the job logs a warning and continues the GA4 collection.
+Never put tokens or credential files in the repository.
 
 This first scheduled version does **not** collect organic Facebook/Instagram
 Page Insights or LinkedIn/Taplio metrics, and it does not update the existing

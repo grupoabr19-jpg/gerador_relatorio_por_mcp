@@ -535,9 +535,10 @@ def main() -> None:
         raise RuntimeError(
             "Configure GA4_PROPERTY_ID, META_AD_ACCOUNT_ID, or both."
         )
-    if meta_account_id and not meta_access_token:
+    if meta_account_id and not meta_access_token and not property_id:
         raise RuntimeError(
-            "META_ACCESS_TOKEN secret is required when Meta Ads is enabled."
+            "META_ACCESS_TOKEN secret is required when collecting Meta Ads "
+            "without GA4."
         )
 
     credentials, _ = google.auth.default(scopes=SCOPES)
@@ -599,6 +600,11 @@ def main() -> None:
             [0, 1, 2, 4, 6, 8, 9],
         )
         LOGGER.info("Upserted %d Meta Ads rows.", count)
+    elif meta_account_id:
+        LOGGER.warning(
+            "Skipping Meta Ads because META_ACCESS_TOKEN is not configured; "
+            "GA4 collection can continue independently."
+        )
 
 
 if __name__ == "__main__":
