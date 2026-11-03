@@ -46,6 +46,18 @@ GA4_HEADERS = [
     "key_events",
     "total_revenue",
 ]
+GA4_DAILY_HEADERS = [
+    "Date",
+    "Sessions",
+    "Total users",
+    "Active users",
+    "New users",
+    "Engaged sessions",
+    "Engagement rate",
+    "Views",
+    "Key events",
+    "Total revenue",
+]
 META_ADS_HEADERS = [
     "date",
     "account_id",
@@ -88,6 +100,39 @@ def _date_from_ga4(value: str) -> str:
     return date(int(value[:4]), int(value[4:6]), int(value[6:8])).isoformat()
 
 
+def _parse_sheet_date(value: Any) -> date | None:
+    if isinstance(value, (int, float)):
+        return date(1899, 12, 30) + timedelta(days=int(value))
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    text = value.strip()
+    for date_format in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _ga4_backfill_start_date(
+    existing_date_values: list[list[Any]], end_date: str
+) -> str:
+    parsed_dates = [
+        parsed_date
+        for row in existing_date_values[1:]
+        if row
+        if (parsed_date := _parse_sheet_date(row[0])) is not None
+    ]
+    report_end = date.fromisoformat(end_date)
+    recent_start = report_end - timedelta(days=LOOKBACK_DAYS - 1)
+    if not parsed_dates:
+        return recent_start.isoformat()
+
+    first_missing = max(parsed_dates) + timedelta(days=1)
+    return min(first_missing, recent_start).isoformat()
+
+
 def _number(value: Any, *, integer: bool = False) -> int | float | str:
     if value is None or value == "":
         return ""
@@ -128,6 +173,20 @@ def _ga4_rows(response: Any) -> list[list[Any]]:
                 *numeric_metrics,
             ]
         )
+    return rows
+
+
+def _ga4_daily_rows(response: Any) -> list[list[Any]]:
+    rows = []
+    for report_row in response.rows:
+        dimensions = [item.value for item in report_row.dimension_values]
+        metrics = [item.value for item in report_row.metric_values]
+        numeric_metrics = [
+            _number(value, integer=index in {0, 1, 2, 3, 4, 6, 7})
+            for index, value in enumerate(metrics)
+        ]
+        numeric_metrics[5] *= 100
+        rows.append([_date_from_ga4(dimensions[0]), *numeric_metrics])
     return rows
 
 
@@ -267,14 +326,22 @@ def _upsert_rows(
     existing_by_key = {}
     for row_index, row in enumerate(existing_rows, start=2):
         padded = row + [""] * (len(headers) - len(row))
-        existing_by_key[tuple(str(padded[index]) for index in key_columns)] = (
-            row_index
-        )
+        key = []
+        for index in key_columns:
+            value = padded[index]
+            parsed_date = _parse_sheet_date(value) if index == 0 else None
+            key.append(parsed_date.isoformat() if parsed_date else str(value))
+        existing_by_key[tuple(key)] = row_index
 
     updates = []
     additions = []
     for row in rows:
-        key = tuple(str(row[index]) for index in key_columns)
+        key = []
+        for index in key_columns:
+            value = row[index]
+            parsed_date = _parse_sheet_date(value) if index == 0 else None
+            key.append(parsed_date.isoformat() if parsed_date else str(value))
+        key = tuple(key)
         row_index = existing_by_key.get(key)
         if row_index is None:
             additions.append(row)
@@ -320,13 +387,20 @@ def _upsert_rows(
 
 
 def _collect_ga4(
-    client: BetaAnalyticsDataClient, property_id: str
+    client: BetaAnalyticsDataClient,
+    property_id: str,
+    start_date: str | None = None,
 ) -> list[list[Any]]:
-    start_date, end_date = _reporting_dates()
+    default_start_date, end_date = _reporting_dates()
     response = client.run_report(
         RunReportRequest(
             property=f"properties/{property_id}",
-            date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
+            date_ranges=[
+                DateRange(
+                    start_date=start_date or default_start_date,
+                    end_date=end_date,
+                )
+            ],
             dimensions=[
                 Dimension(name="date"),
                 Dimension(name="sessionSourceMedium"),
@@ -347,6 +421,32 @@ def _collect_ga4(
         )
     )
     return _ga4_rows(response)
+
+
+def _collect_ga4_daily(
+    client: BetaAnalyticsDataClient, property_id: str, start_date: str
+) -> list[list[Any]]:
+    _, end_date = _reporting_dates()
+    response = client.run_report(
+        RunReportRequest(
+            property=f"properties/{property_id}",
+            date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
+            dimensions=[Dimension(name="date")],
+            metrics=[
+                Metric(name="sessions"),
+                Metric(name="totalUsers"),
+                Metric(name="activeUsers"),
+                Metric(name="newUsers"),
+                Metric(name="engagedSessions"),
+                Metric(name="engagementRate"),
+                Metric(name="screenPageViews"),
+                Metric(name="keyEvents"),
+                Metric(name="totalRevenue"),
+            ],
+            limit=250_000,
+        )
+    )
+    return _ga4_daily_rows(response)
 
 
 def _meta_get(
@@ -445,7 +545,39 @@ def main() -> None:
 
     if property_id:
         ga4_client = BetaAnalyticsDataClient(credentials=credentials)
-        ga4_rows = _collect_ga4(ga4_client, property_id)
+        _, report_end_date = _reporting_dates()
+        daily_values_response = sheets_session.get(
+            f"{SHEETS_API}/{spreadsheet_id}/values/"
+            f"{quote('Dados_GA4!A:A', safe='!')}",
+            params={"valueRenderOption": "UNFORMATTED_VALUE"},
+            timeout=30,
+        )
+        daily_values_response.raise_for_status()
+        daily_date_values = daily_values_response.json().get("values", [])
+        if not daily_date_values or daily_date_values[0] != ["Date"]:
+            raise ValueError(
+                "Dados_GA4 must exist and start with the expected Date header."
+            )
+        daily_start_date = _ga4_backfill_start_date(
+            daily_date_values, report_end_date
+        )
+        daily_rows = _collect_ga4_daily(
+            ga4_client, property_id, daily_start_date
+        )
+        daily_count = _upsert_rows(
+            sheets_session,
+            spreadsheet_id,
+            "Dados_GA4",
+            GA4_DAILY_HEADERS,
+            daily_rows,
+            [0],
+        )
+        LOGGER.info(
+            "Upserted %d GA4 daily rows into Dados_GA4.", daily_count
+        )
+
+        detail_start_date, _ = _reporting_dates()
+        ga4_rows = _collect_ga4(ga4_client, property_id, detail_start_date)
         count = _upsert_rows(
             sheets_session,
             spreadsheet_id,

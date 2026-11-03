@@ -1,11 +1,14 @@
 """Tests for daily marketing data collection helpers."""
 
 import unittest
+from datetime import date
 from unittest.mock import Mock
 
 from scripts.daily_marketing_report import (
     GA4_HEADERS,
     META_ADS_HEADERS,
+    _ga4_backfill_start_date,
+    _ga4_daily_rows,
     _ga4_rows,
     _meta_ads_rows,
     _normalize_spreadsheet_id,
@@ -14,6 +17,29 @@ from scripts.daily_marketing_report import (
 
 
 class TestReportRowConversion(unittest.TestCase):
+    def test_ga4_backfill_fills_gap_and_reloads_recent_window(self):
+        self.assertEqual(
+            _ga4_backfill_start_date(
+                [["Date"], ["2026-09-14"], ["2026-09-15"]],
+                "2026-11-02",
+            ),
+            "2026-09-16",
+        )
+        self.assertEqual(
+            _ga4_backfill_start_date(
+                [["Date"], ["2026-11-01"], ["2026-11-02"]],
+                "2026-11-02",
+            ),
+            "2026-10-27",
+        )
+
+    def test_ga4_backfill_parses_sheet_serial_dates(self):
+        serial_date = (date(2026, 11, 2) - date(1899, 12, 30)).days
+        self.assertEqual(
+            _ga4_backfill_start_date([["Date"], [serial_date]], "2026-11-02"),
+            "2026-10-27",
+        )
+
     def test_normalizes_spreadsheet_id_or_full_url(self):
         spreadsheet_id = "1goIR1S7rAzNLwTnCAeVbHp-Ko0l7M44p6B0RfUaM16w"
         self.assertEqual(
@@ -74,6 +100,30 @@ class TestReportRowConversion(unittest.TestCase):
             ],
         )
         self.assertEqual(len(GA4_HEADERS), 12)
+
+    def test_ga4_daily_rows_match_existing_percentage_format(self):
+        response = Mock()
+        response.rows = [
+            Mock(
+                dimension_values=[Mock(value="20260915")],
+                metric_values=[
+                    Mock(value="67"),
+                    Mock(value="55"),
+                    Mock(value="52"),
+                    Mock(value="50"),
+                    Mock(value="49"),
+                    Mock(value="0.7313"),
+                    Mock(value="120"),
+                    Mock(value="87"),
+                    Mock(value="0"),
+                ],
+            )
+        ]
+
+        self.assertEqual(
+            _ga4_daily_rows(response),
+            [["2026-09-15", 67, 55, 52, 50, 49, 73.13, 120, 87, 0.0]],
+        )
 
     def test_converts_meta_ads_rows_and_preserves_breakdowns(self):
         rows = _meta_ads_rows(
@@ -145,6 +195,43 @@ class TestSheetUpsert(unittest.TestCase):
             append_body["values"],
             [["2026-11-02", "google / organic", "8"]],
         )
+
+    def test_upsert_matches_sheet_serial_date_to_iso_date(self):
+        serial_date = (date(2026, 9, 15) - date(1899, 12, 30)).days
+        session = Mock()
+        metadata_response = Mock()
+        metadata_response.json.return_value = {
+            "sheets": [{"properties": {"title": "Dados_GA4"}}]
+        }
+        metadata_response.raise_for_status.return_value = None
+        values_response = Mock()
+        values_response.json.return_value = {
+            "values": [
+                ["Date", "Sessions"],
+                [serial_date, 40],
+            ]
+        }
+        values_response.raise_for_status.return_value = None
+        session.get.side_effect = [metadata_response, values_response]
+        update_response = Mock()
+        update_response.raise_for_status.return_value = None
+        session.post.return_value = update_response
+
+        _upsert_rows(
+            session,
+            "sheet-id",
+            "Dados_GA4",
+            ["Date", "Sessions"],
+            [["2026-09-15", 42]],
+            [0],
+        )
+
+        self.assertEqual(session.post.call_count, 1)
+        update_body = session.post.call_args.kwargs["json"]
+        self.assertEqual(
+            update_body["data"][0]["range"], "'Dados_GA4'!A2:B2"
+        )
+        self.assertEqual(update_body["data"][0]["values"], [["2026-09-15", 42]])
 
     def test_refuses_unexpected_existing_headers(self):
         session = Mock()

@@ -89,9 +89,12 @@ re-queries the previous seven complete days to account for reporting delays
 and upserts by date and dimensions. Run it manually with **Actions → Daily
 marketing data → Run workflow** to verify setup before enabling the schedule.
 
-The collector creates and writes only to `Coleta_GA4_Diario` and
-`Coleta_MetaAds_Diario`; it does not modify existing source tabs or the
-Dashboard. Counts and rates are stored as numbers. Configure repository
+The collector updates the daily aggregate in `Dados_GA4`, filling dates after
+the latest existing date and re-querying the latest seven days to account for
+reporting delays. It also writes source/campaign detail to
+`Coleta_GA4_Diario`, and Meta Ads detail (when configured) to
+`Coleta_MetaAds_Diario`. Counts and rates are stored as numbers. The Dashboard
+is not modified. Configure repository
 **Variables** and **Secrets**:
 
 | Name | Type | Purpose |
