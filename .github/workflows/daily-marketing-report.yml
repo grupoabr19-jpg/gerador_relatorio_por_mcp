@@ -29,6 +29,21 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Validate Google authentication secrets
+        shell: bash
+        env:
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        run: |
+          if [[ -z "$GCP_WORKLOAD_IDENTITY_PROVIDER" ]]; then
+            echo "::error::Missing or empty Actions secret: GCP_WORKLOAD_IDENTITY_PROVIDER"
+            exit 1
+          fi
+          if [[ -z "$GCP_SERVICE_ACCOUNT" ]]; then
+            echo "::error::Missing or empty Actions secret: GCP_SERVICE_ACCOUNT"
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2
         with:
