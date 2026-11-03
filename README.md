@@ -91,11 +91,11 @@ and upserts by date and dimensions. It can also be run manually with
 
 The collector updates the daily aggregate in `Dados_GA4`, filling dates after
 the latest existing date and re-querying the latest seven days to account for
-reporting delays. It also writes source/campaign detail to
-`Coleta_GA4_Diario`, and Meta Ads detail (when configured) to
-`Coleta_MetaAds_Diario`. Counts and rates are stored as numbers. The Dashboard
-is not modified. Configure repository
-**Variables** and **Secrets**:
+reporting delays, then sorts the data rows chronologically. It also writes
+source/campaign detail to `Coleta_GA4_Diario`, and Meta Ads detail (when
+configured) to `Coleta_MetaAds_Diario`. Counts and rates are stored as numbers.
+The Dashboard is not modified. Configure repository **Variables** and
+**Secrets**:
 
 | Name | Type | Purpose |
 | --- | --- | --- |

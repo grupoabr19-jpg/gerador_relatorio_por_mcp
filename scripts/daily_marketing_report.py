@@ -252,7 +252,9 @@ def _column_name(column_number: int) -> str:
     return name
 
 
-def _ensure_sheet(session: AuthorizedSession, spreadsheet_id: str, title: str):
+def _ensure_sheet(
+    session: AuthorizedSession, spreadsheet_id: str, title: str
+) -> int | None:
     response = session.get(
         f"{SHEETS_API}/{spreadsheet_id}",
         params={"fields": "sheets.properties(sheetId,title)"},
@@ -260,8 +262,10 @@ def _ensure_sheet(session: AuthorizedSession, spreadsheet_id: str, title: str):
     )
     response.raise_for_status()
     sheets = response.json().get("sheets", [])
-    if any(sheet["properties"]["title"] == title for sheet in sheets):
-        return
+    for sheet in sheets:
+        properties = sheet["properties"]
+        if properties["title"] == title:
+            return properties.get("sheetId")
 
     response = session.post(
         f"{SHEETS_API}/{spreadsheet_id}:batchUpdate",
@@ -269,11 +273,16 @@ def _ensure_sheet(session: AuthorizedSession, spreadsheet_id: str, title: str):
         timeout=30,
     )
     if response.ok:
-        return
+        replies = response.json().get("replies", [])
+        if replies:
+            return replies[0].get("addSheet", {}).get("properties", {}).get(
+                "sheetId"
+            )
+        return None
 
     error = response.json().get("error", {})
     if error.get("status") == "ALREADY_EXISTS":
-        return
+        return _ensure_sheet(session, spreadsheet_id, title)
     raise RuntimeError(
         f"Could not create worksheet {title}: "
         f"{error.get('message', response.status_code)}"
@@ -287,6 +296,7 @@ def _upsert_rows(
     headers: list[str],
     rows: list[list[Any]],
     key_columns: list[int],
+    sort_key_index: int | None = None,
 ) -> int:
     """Insert or replace rows in an automation-owned worksheet by key."""
     if not rows:
@@ -296,7 +306,7 @@ def _upsert_rows(
     if any(len(row) != len(headers) for row in rows):
         raise ValueError(f"Rows for {sheet_name} do not match its header.")
 
-    _ensure_sheet(session, spreadsheet_id, sheet_name)
+    sheet_id = _ensure_sheet(session, spreadsheet_id, sheet_name)
     quoted_range = quote(_sheets_range(sheet_name), safe="!'")
     response = session.get(
         f"{SHEETS_API}/{spreadsheet_id}/values/{quoted_range}",
@@ -382,6 +392,42 @@ def _upsert_rows(
             timeout=60,
         )
         response.raise_for_status()
+
+    if sort_key_index is not None:
+        if not 0 <= sort_key_index < len(headers):
+            raise ValueError(f"Invalid sort column for {sheet_name}.")
+        if sheet_id is None:
+            raise RuntimeError(
+                f"Could not determine the sheet ID for {sheet_name} sorting."
+            )
+        data_row_count = len(existing) - 1 + len(additions)
+        if data_row_count > 1:
+            response = session.post(
+                f"{SHEETS_API}/{spreadsheet_id}:batchUpdate",
+                json={
+                    "requests": [
+                        {
+                            "sortRange": {
+                                "range": {
+                                    "sheetId": sheet_id,
+                                    "startRowIndex": 1,
+                                    "endRowIndex": data_row_count + 1,
+                                    "startColumnIndex": 0,
+                                    "endColumnIndex": len(headers),
+                                },
+                                "sortSpecs": [
+                                    {
+                                        "dimensionIndex": sort_key_index,
+                                        "sortOrder": "ASCENDING",
+                                    }
+                                ],
+                            }
+                        }
+                    ]
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
 
     return len(rows)
 
@@ -572,6 +618,7 @@ def main() -> None:
             GA4_DAILY_HEADERS,
             daily_rows,
             [0],
+            sort_key_index=0,
         )
         LOGGER.info(
             "Upserted %d GA4 daily rows into Dados_GA4.", daily_count

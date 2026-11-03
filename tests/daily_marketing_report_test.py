@@ -233,6 +233,57 @@ class TestSheetUpsert(unittest.TestCase):
         )
         self.assertEqual(update_body["data"][0]["values"], [["2026-09-15", 42]])
 
+    def test_sorts_daily_sheet_by_date_after_upsert(self):
+        session = Mock()
+        metadata_response = Mock()
+        metadata_response.json.return_value = {
+            "sheets": [
+                {"properties": {"title": "Dados_GA4", "sheetId": 73}}
+            ]
+        }
+        metadata_response.raise_for_status.return_value = None
+        values_response = Mock()
+        values_response.json.return_value = {
+            "values": [
+                ["Date", "Sessions"],
+                ["2026-09-16", 10],
+                ["2026-09-15", 12],
+            ]
+        }
+        values_response.raise_for_status.return_value = None
+        session.get.side_effect = [metadata_response, values_response]
+        update_response = Mock()
+        update_response.raise_for_status.return_value = None
+        sort_response = Mock()
+        sort_response.raise_for_status.return_value = None
+        session.post.side_effect = [update_response, sort_response]
+
+        _upsert_rows(
+            session,
+            "sheet-id",
+            "Dados_GA4",
+            ["Date", "Sessions"],
+            [["2026-09-16", 10]],
+            [0],
+            sort_key_index=0,
+        )
+
+        sort_request = session.post.call_args_list[-1].kwargs["json"]
+        self.assertEqual(
+            sort_request["requests"][0]["sortRange"]["range"],
+            {
+                "sheetId": 73,
+                "startRowIndex": 1,
+                "endRowIndex": 3,
+                "startColumnIndex": 0,
+                "endColumnIndex": 2,
+            },
+        )
+        self.assertEqual(
+            sort_request["requests"][0]["sortRange"]["sortSpecs"],
+            [{"dimensionIndex": 0, "sortOrder": "ASCENDING"}],
+        )
+
     def test_refuses_unexpected_existing_headers(self):
         session = Mock()
         metadata_response = Mock()
